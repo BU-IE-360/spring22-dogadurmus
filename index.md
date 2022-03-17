@@ -1,3 +1,3 @@
-## Welcome to My GitHub Pages
+## Welcome to My GitHub Page
 
 ### Homework1 1
