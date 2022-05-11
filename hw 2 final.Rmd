@@ -1,0 +1,193 @@
+---
+title: "ie360 hw2"
+output: html_document
+date: '2022-05-11'
+---
+
+### Homework 2
+
+The aim of this study is to forescast unleaded gasoline sale for every quarter of the year 2007 using time series regression models.
+
+For this purpose, the data consisting of quarterly gasoline and diesel sales as well as some potential independent variables between 2000 and 2006 will be used.
+
+
+## Reading and Manipulating Data
+
+First, we start off by installing and packing the packages that will be needed. Then data is read and stored in a data table. 
+
+Then for readablity, columns are renamed.These are summarized as follows:
+
+UGS: Unleaded gasoline sale in a given quarter,
+RNUV: An index indicating the rate of new unleaded gasoline using vehicles being added to the traffic in
+a quarter,
+PU: Average price (adjusted with an index) of a liter of unleaded gasoline in a quarter,
+PG: Average price (adjusted with an index) of a liter of diesel gasoline in a quarter,
+NUGV: Number of unleaded gasoline using vehicles in the traffic,
+NDGV: Number of diesel gasoline using vehicles in the traffic (per 1000 people),
+GNPA: Agriculture component of Gross National Product (adjusted with an index),
+GNPC: Commerce component of Gross National Product (adjusted with an index),
+GNPT: Grand total for GNP (agriculture, commerce and other components total).
+
+Also, it the thousand seperators in excel vs R was inconsistent, therefore, necessary manipulations were done.
+
+Furthermore, the quarter info is converted to a date data from character data to work with time series.
+
+```{r echo=TRUE, include=TRUE, warning=FALSE, message=FALSE}
+setwd("C:/Users/dogad/Desktop/IE360")
+require(data.table)
+require(lubridate)
+require(zoo)
+require(ggplot2)
+require(RcppRoll)
+require(GGally)
+require(forecast)
+petroldata<-fread("IE360_Spring22_HW2_data.csv")
+str(petroldata)
+
+petroldata$`Unleaded Gasoline Sale (UGS)`=as.numeric(gsub(" ", "", petroldata$`Unleaded Gasoline Sale (UGS)`))
+petroldata$`# LPG Vehicles (NLPG)`=as.numeric(gsub(" ", "",petroldata$`# LPG Vehicles (NLPG)` ))
+petroldata$`# Unleaded Gasoline Vehicles (NUGV)`=as.numeric(gsub(" ", "", petroldata$`# Unleaded Gasoline Vehicles (NUGV)`))
+petroldata$`GNP Agriculture`=as.numeric(gsub(" ", "", petroldata$`GNP Agriculture`))
+petroldata$`GNP Commerce`=as.numeric(gsub(" ", "", petroldata$`GNP Commerce`))
+petroldata$`GNP Total`=as.numeric(gsub(" ", "", petroldata$`GNP Total`))
+
+petroldata$Quarter= as.Date(as.yearqtr(petroldata$Quarter,format="%Y_Q%q"))
+
+str(petroldata)
+
+setnames(petroldata,old = c("Unleaded Gasoline Sale (UGS)"  ,"RNUV", "# LPG Vehicles (NLPG)"               
+                            ,"Price of Unleaded Gasoline (PU)"      ,"Price of Diesel Gasoline (PG)"       
+                            ,"# Unleaded Gasoline Vehicles (NUGV)"  ,"# of Diesel Gasoline Vehicles (NDGV)"
+                            ,"GNP Agriculture"                      ,"GNP Commerce"                        
+                            ,"GNP Total"        ),new= c("ugs","rnuv","nlpg","pu","pg","nugv","ndgv","gnpa","gnpc","gnpt"))
+
+str(petroldata)
+
+```
+
+## Data Visualizations
+
+First, the output variable is plotted with respect to time. 
+```{r echo=TRUE, include=TRUE, warning=FALSE, message=FALSE}
+ggpugs <- ggplot(data = petroldata,aes(x = Quarter,y =ugs))
+ggpugs + geom_line(color ="black")
+
+```
+From visually observing the graph, data seems to follow a patern with a period of 4 quarters. Also there seems to be an overall downward trend.
+
+Therefore, it would be logical to check if the series is stationary. Thus, Roling mean and rolling variance series are checked for a lag of 4. 
+
+
+```{r echo=TRUE, include=TRUE, warning=FALSE, message=FALSE}
+mean_series=roll_mean(petroldata$ugs,4,align='left')
+var_series=roll_var(petroldata$ugs,4,align='left') ######burda var time windiwouna kac diyecegimi bilmioyrum
+
+plot(mean_series,
+     type='l',col='red',
+     xlab = "time (t)",
+     ylab = "Rolling Mean",
+     main = "Mean series")
+
+plot(var_series,
+     type='l',col='red',
+     xlab = "time (t)",
+     ylab = "Rolling Variance",
+     main = "Variance series")
+
+
+```
+
+Mean series graph showed a downward trend. So we can say that the series is not actually stationary.
+
+Variance series graph, however, showed almost random behaviour.
+
+Then, autcorrelation function should be checked.
+
+```{r echo=TRUE, include=TRUE, warning=FALSE, message=FALSE}
+acf(petroldata$ugs,lag.max=8,na.action = na.pass)
+```
+It shows very strong correlation at lag 4, which agrees with the claim of a seasonality of period 4.
+It also shows strong correlation at lag 2, meaning that it is likely that there is a trend in the data.
+
+All these foundings show that data is in fact not stationary.
+
+## Constructing the Model
+
+I started the model by checking the coreelation between each variable including the output variable.
+```{r echo=TRUE, include=TRUE, warning=FALSE, message=FALSE}
+ggpairs(petroldata)
+```
+Some variables have almost perfect correlation. Which indictes that some variables may be explained by the other ones.
+
+From the visual analysis above, it was seen that it would be logical to include a trend variable and also a seasonality variable of period 4. Thus, a model consisting only of trend and a seasonality of 4 is constructed.
+# model 1
+```{r echo=TRUE, include=TRUE, warning=FALSE, message=FALSE}
+petroldata$qrtr<-as.factor(quarter(petroldata$Quarter))
+petroldata[,trnd:=1:.N]
+lm1 =lm(ugs~qrtr+trnd,data=petroldata)
+summary(lm1)
+checkresiduals(lm1$residuals)
+```
+This model actually has a good p value, and a good adjusted R-squared value of 0.8966. Also, all variables used are significant. But still there seems to be an autocorrelation of lag 2 even though it is still in between the limits. It is improvable since the other variables of the model are still unused.
+
+Then a model using lagged variables is built. Since the first autocorrelation function showed a strong correlation at lag 4, Y(t-4) is used to predict Y(t). 
+
+# model 2
+```{r echo=TRUE, include=TRUE, warning=FALSE, message=FALSE}
+petroldata[,ugslag4:=c(rep(NA,4),petroldata$ugs[-(29:32)])]
+lm2 =lm(ugs~ugslag4,data=petroldata[(5:28)])
+summary(lm2)
+checkresiduals(lm2$residuals)
+```
+This model significantly decreased the autocorrelation between residuals. It also gave a good p value and a high adjusted R-squared value of 0.8375.But the above model had better adjusted R-squred value. 
+
+Then the combination of both models is tried.Even though this model showed a better performance in terms of adjusted R-squre, in the model, lagged variable is not significant. Meaning that trend and seasonality variables did a good job explaining the effect of lagged variables. Therefore I decided to move on with the first model without the lagged output variable.
+
+```{r echo=FALSE, include=FALSE, warning=FALSE, message=FALSE}
+lm10 =lm(ugs~ugslag4+trnd+qrtr,data=petroldata[(5:28)])
+summary(lm10)
+checkresiduals(lm10$residuals)
+
+```
+
+To improve the first model even further I tried to explain resiudals by the independent variables and checked which variables did a good job explaining the residuals. Only ndgv and nugv variables were significant. But from the first pairwise correlation graph, it was seen that nugv and ngdv variables have almost perfect correlation, thus I picked the more significant one, which was ndgv, to continue.
+```{r echo=FALSE, include=FALSE, warning=FALSE, message=FALSE}
+res=petroldata[-(29:32)]
+res[,residuals:=lm1$residuals]
+res
+lmres=lm(residuals~rnuv+nlpg+pu+pg+nugv+ndgv+gnpa+gnpc+gnpt,data=res)
+summary(lmres)
+checkresiduals(lmres)
+```
+So in my final model, I used trend, seasonality and NDGV variables.
+
+# final model
+```{r echo=TRUE, include=TRUE, warning=FALSE, message=FALSE}
+lm3 =lm(ugs~qrtr+trnd+ndgv,data=petroldata) #ndgv nugv highly correlated.
+summary(lm3)
+checkresiduals(lm3$residuals)
+
+```
+This model gave the best performance. All variables are significant, has a small p value and a high adjusted R-squared value of 0.9191.
+It also has uncorrelated residuals, residuals seems to be random and close to normal distributed. 
+
+To observe visually, actual versus predicted graphs are built.
+```{r echo=TRUE, include=TRUE, warning=FALSE, message=FALSE}
+tmp=copy(petroldata)
+tmp[,actual:=ugs]
+tmp[,predicted_trend:=predict(lm3,tmp)]
+tmp[,residual_trend:=actual-predicted_trend]
+#head(tmp)
+ggplot(tmp ,aes(x=Quarter)) +
+  geom_line(aes(y=actual,color='real')) + 
+  geom_line(aes(y=predicted_trend,color='predicted'))
+```
+As it can be seen from the graphs, they are pretty close. So I decided to move on with this model to make predictions of 2007 sales.
+
+## Forecasting
+
+```{r echo=TRUE, message=FALSE, warning=FALSE, include=TRUE}
+pr1=predict(lm3,newdata = petroldata[29:32])
+pr1
+```
+Also I tried some other models in my R code, which weren't useful, but I still included them in my code.
