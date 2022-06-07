@@ -11,3 +11,6 @@ Here is the [.html file](hw-2-final.html)
 Here is the [.R file](hw-2-final.R)
 Here is the [.Rmd file](hw-2-final.Rmd)
 Here is the [homework description](IE360_Spring22_HW2.pdf)
+
+### Project
+Here is the [.Rmd file](proje-son.Rmd)
