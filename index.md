@@ -14,4 +14,4 @@ Here is the [homework description](IE360_Spring22_HW2.pdf)
 
 ### Project
 Here is the [.Rmd file](proje-son.Rmd)
-Here is the [.html file](proje)
+Here is the [.html file](proje.html)
